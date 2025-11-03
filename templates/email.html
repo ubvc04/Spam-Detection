@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Email Spam Detection</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="{{ url_for('static', filename='theme.js') }}"></script>
+</head>
+<body>
+    <!-- Navbar -->
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container">
+            <a class="navbar-brand" href="/">
+                <i class="fas fa-shield-alt me-2"></i>
+                Spam Detection System
+            </a>
+            <div class="collapse navbar-collapse">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">Home</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/stats">Statistics</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-5 mb-5">
+        <div class="row justify-content-center">
+            <div class="col-lg-8">
+                <!-- Back Button -->
+                <a href="/" class="btn btn-outline-light mb-4">
+                    <i class="fas fa-arrow-left me-2"></i>Back to Home
+                </a>
+
+                <!-- Detection Form Card -->
+                <div class="detection-form-card">
+                    <div class="text-center mb-4">
+                        <div class="form-icon email-icon">
+                            <i class="fas fa-envelope fa-4x"></i>
+                        </div>
+                        <h2 class="mt-3">Email Spam Detection</h2>
+                        <p>Paste your email content below to check if it's spam</p>
+                    </div>
+
+                    <form id="emailForm">
+                        <div class="mb-3">
+                            <label for="emailText" class="form-label">Email Content</label>
+                            <textarea 
+                                class="form-control form-control-lg" 
+                                id="emailText" 
+                                rows="8" 
+                                placeholder="Enter email subject and body here..."
+                                required></textarea>
+                        </div>
+
+                        <!-- File Upload Section -->
+                        <div class="upload-section mb-3">
+                            <div class="upload-icons">
+                                <label for="emailFileUpload" class="upload-icon-btn" title="Upload Image">
+                                    <i class="fas fa-image fa-2x"></i>
+                                    <span>Image</span>
+                                </label>
+                                <label for="emailDocUpload" class="upload-icon-btn" title="Upload Document">
+                                    <i class="fas fa-file-alt fa-2x"></i>
+                                    <span>Document</span>
+                                </label>
+                                <input type="file" id="emailFileUpload" accept="image/*" style="display: none;" onchange="handleFileUpload(this, 'email')">
+                                <input type="file" id="emailDocUpload" accept=".pdf,.doc,.docx,.txt,.eml" style="display: none;" onchange="handleFileUpload(this, 'email')">
+                            </div>
+                            <div id="emailFileName" class="upload-filename"></div>
+                        </div>
+
+                        <!-- Example Button -->
+                        <button type="button" class="btn btn-sm btn-outline-secondary mb-3" onclick="loadExample()">
+                            <i class="fas fa-lightbulb me-2"></i>Load Example
+                        </button>
+
+                        <div class="text-center">
+                            <button type="submit" class="btn btn-primary btn-lg px-5">
+                                <i class="fas fa-search me-2"></i>Check Email
+                            </button>
+                        </div>
+                    </form>
+
+                    <!-- Loading Spinner -->
+                    <div id="loading" class="text-center mt-4" style="display: none;">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Analyzing...</span>
+                        </div>
+                        <p class="mt-2 text-muted">Analyzing email...</p>
+                    </div>
+
+                    <!-- Result Card -->
+                    <div id="result" class="result-card mt-4" style="display: none;">
+                        <div class="text-center">
+                            <div id="resultIcon" class="result-icon"></div>
+                            <h3 id="resultLabel" class="mt-3"></h3>
+                            <div id="resultConfidence" class="result-confidence"></div>
+                            <p id="resultMessage" class="mt-2"></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const form = document.getElementById('emailForm');
+        const loading = document.getElementById('loading');
+        const result = document.getElementById('result');
+
+        function loadExample() {
+            document.getElementById('emailText').value = 
+                "Subject: URGENT - You've Won $1,000,000!\n\n" +
+                "Congratulations! You have been selected as our lucky winner!\n\n" +
+                "Click here immediately to claim your prize: http://totally-legit-prizes.tk\n\n" +
+                "This offer expires in 24 hours! Act now!";
+        }
+
+        // Handle file upload
+        async function handleFileUpload(input, type) {
+            const file = input.files[0];
+            if (!file) return;
+
+            const fileNameDiv = document.getElementById(`${type}FileName`);
+            fileNameDiv.innerHTML = `<i class="fas fa-check-circle"></i>Processing: ${file.name}...`;
+            fileNameDiv.classList.add('show');
+
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('type', type);
+
+            try {
+                const response = await fetch('/api/upload/extract', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    document.getElementById(`${type}Text`).value = data.text;
+                    fileNameDiv.innerHTML = `<i class="fas fa-check-circle"></i>Extracted text from: ${file.name}`;
+                } else {
+                    fileNameDiv.innerHTML = `<i class="fas fa-exclamation-circle"></i>Error: ${data.error}`;
+                }
+            } catch (error) {
+                fileNameDiv.innerHTML = `<i class="fas fa-exclamation-circle"></i>Upload failed: ${error.message}`;
+            }
+        }
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const text = document.getElementById('emailText').value;
+            
+            // Show loading
+            loading.style.display = 'block';
+            result.style.display = 'none';
+            
+            try {
+                const response = await fetch('/api/predict/email', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ text: text })
+                });
+                
+                const data = await response.json();
+                
+                loading.style.display = 'none';
+                
+                if (data.success) {
+                    displayResult(data);
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            } catch (error) {
+                loading.style.display = 'none';
+                alert('Error: ' + error.message);
+            }
+        });
+
+        function displayResult(data) {
+            const resultIcon = document.getElementById('resultIcon');
+            const resultLabel = document.getElementById('resultLabel');
+            const resultConfidence = document.getElementById('resultConfidence');
+            const resultMessage = document.getElementById('resultMessage');
+            
+            result.style.display = 'block';
+            result.className = 'result-card mt-4 animate-result';
+            
+            if (data.is_spam) {
+                result.classList.add('result-spam');
+                resultIcon.innerHTML = '<i class="fas fa-exclamation-triangle fa-4x text-danger"></i>';
+                resultLabel.innerHTML = '🚫 SPAM DETECTED';
+                resultLabel.className = 'mt-3 text-danger';
+                
+                // Check if verified by Gemini or Model
+                if (data.stage && data.stage.includes('Stage 2')) {
+                    resultMessage.innerHTML = `
+                        <strong>⚠️ Model missed this, caught by AI verification!</strong><br>
+                        <small>${data.reason || 'This email appears to be spam.'}</small>
+                    `;
+                } else {
+                    resultMessage.textContent = 'This email appears to be spam. Be cautious!';
+                }
+            } else {
+                result.classList.add('result-safe');
+                resultIcon.innerHTML = '<i class="fas fa-check-circle fa-4x text-success"></i>';
+                resultLabel.innerHTML = '✅ LEGITIMATE EMAIL';
+                resultLabel.className = 'mt-3 text-success';
+                resultMessage.textContent = 'This email appears to be legitimate.';
+            }
+            
+            // Show confidence with verification info
+            let confidenceHTML = `
+                <div class="progress mt-3" style="height: 30px;">
+                    <div class="progress-bar ${data.is_spam ? 'bg-danger' : 'bg-success'}" 
+                         style="width: ${data.confidence}%">
+                        ${data.confidence}% Confidence
+                    </div>
+                </div>
+            `;
+            
+            resultConfidence.innerHTML = confidenceHTML;
+        }
+    </script>
+</body>
+</html>

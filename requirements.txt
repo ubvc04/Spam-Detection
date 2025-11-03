@@ -1,0 +1,9 @@
+flask>=2.0
+tensorflow>=2.8
+keras>=2.8
+pandas
+numpy
+scikit-learn
+joblib
+matplotlib
+tqdm
