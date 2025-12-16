@@ -17,13 +17,27 @@
                 <i class="fas fa-shield-alt me-2"></i>
                 Spam Detection System
             </a>
-            <div class="collapse navbar-collapse">
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav ms-auto">
                     <li class="nav-item">
-                        <a class="nav-link" href="/">Home</a>
+                        <a class="nav-link" href="/"><i class="fas fa-home me-1"></i>Home</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="/stats">Statistics</a>
+                        <a class="nav-link" href="/history"><i class="fas fa-history me-1"></i>History</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/stats"><i class="fas fa-chart-bar me-1"></i>Statistics</a>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
+                            <i class="fas fa-user-circle me-1"></i>{{ user.username }}
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><a class="dropdown-item" href="/logout"><i class="fas fa-sign-out-alt me-2"></i>Logout</a></li>
+                        </ul>
                     </li>
                 </ul>
             </div>
@@ -124,7 +138,7 @@
                 "This offer expires in 24 hours! Act now!";
         }
 
-        // Handle file upload
+        // Handle file upload with timeout
         async function handleFileUpload(input, type) {
             const file = input.files[0];
             if (!file) return;
@@ -133,15 +147,28 @@
             fileNameDiv.innerHTML = `<i class="fas fa-check-circle"></i>Processing: ${file.name}...`;
             fileNameDiv.classList.add('show');
 
+            // Check file size (max 16MB)
+            if (file.size > 16 * 1024 * 1024) {
+                fileNameDiv.innerHTML = `<i class="fas fa-exclamation-circle"></i>Error: File too large (max 16MB)`;
+                input.value = '';
+                return;
+            }
+
             const formData = new FormData();
             formData.append('file', file);
             formData.append('type', type);
 
+            // Create abort controller for timeout
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
+
             try {
                 const response = await fetch('/api/upload/extract', {
                     method: 'POST',
-                    body: formData
+                    body: formData,
+                    signal: controller.signal
                 });
+                clearTimeout(timeoutId);
 
                 const data = await response.json();
 
@@ -152,7 +179,12 @@
                     fileNameDiv.innerHTML = `<i class="fas fa-exclamation-circle"></i>Error: ${data.error}`;
                 }
             } catch (error) {
-                fileNameDiv.innerHTML = `<i class="fas fa-exclamation-circle"></i>Upload failed: ${error.message}`;
+                clearTimeout(timeoutId);
+                if (error.name === 'AbortError') {
+                    fileNameDiv.innerHTML = `<i class="fas fa-exclamation-circle"></i>Upload timed out. Try a smaller file.`;
+                } else {
+                    fileNameDiv.innerHTML = `<i class="fas fa-exclamation-circle"></i>Upload failed: ${error.message || 'Network error'}`;
+                }
             }
         }
 
@@ -204,7 +236,7 @@
                 resultLabel.innerHTML = '🚫 SPAM DETECTED';
                 resultLabel.className = 'mt-3 text-danger';
                 
-                // Check if verified by Gemini or Model
+                // Check if verified by OpenRouter AI or Model
                 if (data.stage && data.stage.includes('Stage 2')) {
                     resultMessage.innerHTML = `
                         <strong>⚠️ Model missed this, caught by AI verification!</strong><br>
@@ -221,17 +253,8 @@
                 resultMessage.textContent = 'This email appears to be legitimate.';
             }
             
-            // Show confidence with verification info
-            let confidenceHTML = `
-                <div class="progress mt-3" style="height: 30px;">
-                    <div class="progress-bar ${data.is_spam ? 'bg-danger' : 'bg-success'}" 
-                         style="width: ${data.confidence}%">
-                        ${data.confidence}% Confidence
-                    </div>
-                </div>
-            `;
-            
-            resultConfidence.innerHTML = confidenceHTML;
+            // Hide confidence score
+            resultConfidence.innerHTML = '';
         }
     </script>
 </body>

@@ -3,9 +3,9 @@
 [![Python](https://img.shields.io/badge/Python-3.11-blue.svg)](https://www.python.org/)
 [![Flask](https://img.shields.io/badge/Flask-2.0+-green.svg)](https://flask.palletsprojects.com/)
 [![TensorFlow](https://img.shields.io/badge/TensorFlow-2.13-orange.svg)](https://www.tensorflow.org/)
-[![Gemini AI](https://img.shields.io/badge/Gemini-2.0%20Flash-purple.svg)](https://ai.google.dev/)
+[![OpenRouter AI](https://img.shields.io/badge/OpenRouter-AI-purple.svg)](https://openrouter.ai/)
 
-Complete end-to-end **Spam Detection System** with Flask backend, deep learning models, and **Gemini AI verification** for enhanced accuracy.
+Complete end-to-end **Spam Detection System** with Flask backend, deep learning models, and **OpenRouter AI verification** for enhanced accuracy.
 
 ---
 
@@ -29,11 +29,11 @@ Complete end-to-end **Spam Detection System** with Flask backend, deep learning 
 - **Email Spam Detection** - LSTM-based model with 95.8% accuracy
 - **SMS Spam Detection** - BiLSTM model with 97.3% accuracy
 - **Phishing URL Detection** - CNN model with 90.35% accuracy
-- **Two-Stage AI Verification** - Gemini AI catches false negatives
+- **Two-Stage AI Verification** - OpenRouter AI catches false negatives
 
 ### 🚀 Advanced Features
 - **File Upload Support** - Extract text from images (OCR), PDFs, DOCX, TXT
-- **Gemini AI Verification** - Secondary verification for legitimate content
+- **OpenRouter AI Verification** - Secondary verification for legitimate content
 - **Modern UI** - Bootstrap 5.3 with light/dark mode toggle
 - **Real-time Analysis** - Instant predictions with confidence scores
 - **Animated Interface** - Smooth animations and responsive design
@@ -74,8 +74,8 @@ graph TB
     subgraph "Two-Stage Detection"
         R[Deep Learning Model] --> S{Prediction}
         S -->|SPAM| T[Return SPAM Result]
-        S -->|LEGITIMATE| U[Gemini AI Verification]
-        U --> V{Gemini Check}
+        S -->|LEGITIMATE| U[OpenRouter AI Verification]
+        U --> V{AI Check}
         V -->|Confirms Safe| W[Return LEGITIMATE]
         V -->|Detects Spam| X[Return SPAM - Stage 2]
     end
@@ -87,7 +87,7 @@ graph TB
     end
     
     subgraph "AI Verification"
-        AB[Gemini 2.0 Flash]
+        AB[OpenRouter AI]
     end
     
     C --> N
@@ -125,7 +125,7 @@ sequenceDiagram
     participant Frontend
     participant Flask
     participant DL Model
-    participant Gemini AI
+    participant OpenRouter AI
     
     User->>Frontend: Submit Text/URL
     Frontend->>Flask: POST /api/predict/{type}
@@ -137,14 +137,14 @@ sequenceDiagram
         Frontend->>User: 🚫 SPAM - Do Not Trust
     else Model Detects LEGITIMATE
         DL Model->>Flask: LEGITIMATE (confidence)
-        Flask->>Gemini AI: Verify Content Safety
+        Flask->>OpenRouter AI: Verify Content Safety
         
-        alt Gemini Confirms Safe
-            Gemini AI->>Flask: SAFE
+        alt AI Confirms Safe
+            OpenRouter AI->>Flask: SAFE
             Flask->>Frontend: Return LEGITIMATE
             Frontend->>User: ✅ LEGITIMATE - Safe
-        else Gemini Detects Spam
-            Gemini AI->>Flask: SPAM + Reasoning
+        else AI Detects Spam
+            OpenRouter AI->>Flask: SPAM + Reasoning
             Flask->>Frontend: SPAM (Stage 2 - AI Caught)
             Frontend->>User: 🚫 SPAM - AI Verification Failed
         end
@@ -157,7 +157,7 @@ sequenceDiagram
 graph LR
     A[Input Content] --> B{DL Model}
     B -->|High Spam Score| C[✅ Immediate SPAM Detection]
-    B -->|Low Spam Score| D[Gemini AI Check]
+    B -->|Low Spam Score| D[OpenRouter AI Check]
     D -->|Suspicious Patterns| E[✅ Caught by AI]
     D -->|All Clear| F[✅ Legitimate]
     
@@ -168,7 +168,7 @@ graph LR
 
 **Benefits:**
 - 🎯 **Catches Edge Cases** - ML models may miss sophisticated phishing
-- 🧠 **AI Reasoning** - Gemini provides context-aware analysis
+- 🧠 **AI Reasoning** - OpenRouter AI provides context-aware analysis
 - 🛡️ **Reduced False Negatives** - Double verification layer
 - ⚡ **Fast for Spam** - Immediate response if spam detected
 
@@ -344,7 +344,7 @@ pip install -r requirements.txt
 **Key Dependencies:**
 - `flask` - Web framework
 - `tensorflow` - Deep learning models
-- `google-generativeai` - Gemini AI integration
+- `requests` - OpenRouter AI integration
 - `pytesseract` - OCR for images
 - `PyPDF2` - PDF text extraction
 - `python-docx` - DOCX parsing
@@ -374,15 +374,15 @@ Each script will:
 - SMS Model: ~3-5 minutes
 - URL Model: ~5-8 minutes
 
-### 5️⃣ Configure Gemini API
-The Gemini API key is already configured in `app.py`. To use your own:
+### 5️⃣ Configure OpenRouter API
+The OpenRouter API key is already configured in `openrouter_verifier.py`. To use your own:
 
 ```python
-# In app.py, line ~25
-genai.configure(api_key="YOUR_API_KEY_HERE")
+# In openrouter_verifier.py
+OPENROUTER_API_KEY = "YOUR_API_KEY_HERE"
 ```
 
-Get your free API key: https://ai.google.dev/
+Get your API key: https://openrouter.ai/
 
 ### 6️⃣ Run Flask App
 ```powershell
@@ -548,13 +548,13 @@ graph TD
 ```mermaid
 pie title False Negative Reduction
     "Caught by DL Model" : 92
-    "Caught by Gemini AI (Stage 2)" : 7
+    "Caught by OpenRouter AI (Stage 2)" : 7
     "Missed by Both" : 1
 ```
 
 **Key Insights:**
 - 🎯 **92%** of spam caught by deep learning models alone
-- 🧠 **+7%** additional detection through Gemini AI verification
+- 🧠 **+7%** additional detection through OpenRouter AI verification
 - 🛡️ **99% total detection rate** with two-stage system
 - ⚡ **Zero false positives** - legitimate content never flagged as spam
 
@@ -582,7 +582,7 @@ graph TB
     end
     
     subgraph "AI Integration"
-        L[Google Generative AI] --> M[Gemini 2.0 Flash]
+        L[OpenRouter AI] --> M[Multi-Model Support]
     end
     
     subgraph "File Processing"
@@ -613,7 +613,7 @@ graph TB
 |----------|-----------|---------|---------|
 | **Backend** | Flask | 2.0+ | Web server & API |
 | **ML Framework** | TensorFlow | 2.13.1 | Deep learning models |
-| **AI Verification** | Google Generative AI | Latest | Gemini 2.0 Flash integration |
+| **AI Verification** | OpenRouter AI | Latest | Multi-model AI integration |
 | **OCR** | pytesseract | 0.3.13 | Image text extraction |
 | **PDF** | PyPDF2 | 3.0.1 | PDF text extraction |
 | **DOCX** | python-docx | 1.2.0 | Word document parsing |
@@ -708,24 +708,24 @@ Warning: This appears to be a phishing attempt!
 
 **Process:**
 - Stage 1: CNN Model → 52% spam score (borderline)
-- Stage 2: Gemini AI → Detects suspicious TLD and fake government domain
+- Stage 2: OpenRouter AI → Detects suspicious TLD and fake government domain
 - Result: 🚫 PHISHING URL (Stage 2 caught it!)
 
 ---
 
 ## 🔧 Configuration
 
-### Gemini AI Setup
+### OpenRouter AI Setup
 
 ```python
-# app.py
-import google.generativeai as genai
+# openrouter_verifier.py
+import requests
 
 # Configure API key
-genai.configure(api_key="YOUR_GEMINI_API_KEY")
+OPENROUTER_API_KEY = "YOUR_OPENROUTER_API_KEY"
 
-# Model configuration
-model = genai.GenerativeModel('gemini-2.0-flash-exp')
+# API endpoint
+OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 ```
 
 ### File Upload Settings
@@ -766,11 +766,11 @@ import pytesseract
 pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 ```
 
-### Gemini API Errors
+### OpenRouter API Errors
 
 **Error:** `API key not valid`
 
-**Solution:** Get a new API key from https://ai.google.dev/ and update `app.py`
+**Solution:** Get a new API key from https://openrouter.ai/ and update `openrouter_verifier.py`
 
 ### Model Not Found
 
@@ -833,7 +833,7 @@ This project is created for educational and demonstration purposes.
 ## 🙏 Acknowledgments
 
 - **TensorFlow** - Deep learning framework
-- **Google Gemini AI** - Advanced AI verification
+- **OpenRouter AI** - Advanced AI verification
 - **Bootstrap** - Responsive UI framework
 - **Tesseract OCR** - Image text extraction
 - **Flask** - Web framework
@@ -844,7 +844,7 @@ This project is created for educational and demonstration purposes.
 
 ### 🛡️ Stay Safe from Spam! 🛡️
 
-**Built with ❤️ using Python, TensorFlow, and Gemini AI**
+**Built with ❤️ using Python, TensorFlow, and OpenRouter AI**
 
 ⭐ Star this repo if you found it helpful!
 

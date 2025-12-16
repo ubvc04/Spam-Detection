@@ -74,6 +74,29 @@ body {
     transition: background 0.3s ease;
 }
 
+/* Override Bootstrap text-muted for theme support */
+.text-muted {
+    color: var(--text-muted) !important;
+}
+
+/* Ensure list items use theme colors */
+ul li, ol li {
+    color: var(--text-secondary);
+}
+
+/* Info card specific styling for model architectures */
+.info-card ul {
+    color: var(--text-secondary) !important;
+}
+
+.info-card ul li {
+    color: var(--text-secondary) !important;
+}
+
+.info-card .small {
+    color: var(--text-secondary) !important;
+}
+
 /* ==================== THEME TOGGLE BUTTON ==================== */
 .theme-toggle {
     position: fixed;
@@ -556,15 +579,20 @@ body {
     color: white;
 }
 
-.stats-card h3 {
+.stats-card h3, .stats-card h4 {
     color: var(--text-primary);
     font-weight: 700;
     margin-bottom: 15px;
 }
 
 .stats-card p {
-    color: var(--text-muted);
+    color: var(--text-muted) !important;
     font-size: 0.95rem;
+}
+
+.stats-card .model-subtitle {
+    color: var(--text-muted) !important;
+    font-size: 0.9rem;
 }
 
 .stats-metrics {
@@ -619,6 +647,17 @@ body {
 
 .info-card p, .info-card ul {
     color: var(--text-secondary);
+}
+
+/* Architecture list in stats page */
+.architecture-list {
+    color: var(--text-secondary) !important;
+    padding-left: 20px;
+}
+
+.architecture-list li {
+    color: var(--text-secondary) !important;
+    margin-bottom: 5px;
 }
 
 /* ==================== FOOTER ==================== */

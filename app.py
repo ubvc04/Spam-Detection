@@ -1,11 +1,20 @@
 """Flask Web Application for Spam Detection System"""
-from flask import Flask, render_template, request, jsonify
+import os
+# Suppress TensorFlow warnings BEFORE importing TensorFlow
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress TF logs (0=all, 1=info, 2=warning, 3=error)
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'  # Disable oneDNN warnings
+
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash
+from functools import wraps
 from pathlib import Path
 import numpy as np
-import os
 from werkzeug.utils import secure_filename
 import warnings
 warnings.filterwarnings('ignore')
+
+# Suppress TensorFlow deprecation warnings
+import logging
+logging.getLogger('tensorflow').setLevel(logging.ERROR)
 
 # Lazy import TensorFlow to avoid DLL issues on startup
 def lazy_load_model(path):
@@ -18,13 +27,42 @@ def lazy_load_model(path):
         return None
 
 from ml_utils import clean_text, clean_url, load_tokenizer, texts_to_sequences
-from gemini_verifier import verify_with_gemini
+from openrouter_verifier import verify_with_openrouter
 from file_extractor import extract_text_from_file
+from database import (
+    create_user, verify_user, get_user_by_id, 
+    save_search, get_user_history, get_user_stats,
+    delete_history_item, clear_user_history
+)
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'spam-detection-system-2025'
+app.config['SECRET_KEY'] = 'spam-detection-system-2025-secure-key'
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
+
+# Error handler for file too large
+@app.errorhandler(413)
+def request_entity_too_large(error):
+    return jsonify({
+        'error': 'File too large. Maximum size is 16MB.',
+        'success': False
+    }), 413
+
+# Login required decorator
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            flash('Please login to access this page', 'error')
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+def get_current_user():
+    """Get current logged in user"""
+    if 'user_id' in session:
+        return get_user_by_id(session['user_id'])
+    return None
 
 BASE = Path(__file__).resolve().parent
 MODELS_DIR = BASE / 'models'
@@ -91,34 +129,129 @@ def load_models():
         print('3. Or install Microsoft Visual C++ Redistributable')
         print('4. Models are trained and saved, just need TensorFlow runtime fix')
 
+# ========== AUTHENTICATION ROUTES ==========
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    """Login page"""
+    if 'user_id' in session:
+        return redirect(url_for('index'))
+    
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '')
+        
+        if not username or not password:
+            flash('Please enter username and password', 'error')
+            return render_template('login.html')
+        
+        result = verify_user(username, password)
+        if result['success']:
+            session['user_id'] = result['user']['id']
+            session['username'] = result['user']['username']
+            flash(f'Welcome back, {username}!', 'success')
+            return redirect(url_for('index'))
+        else:
+            flash(result['error'], 'error')
+    
+    return render_template('login.html')
+
+@app.route('/signup', methods=['GET', 'POST'])
+def signup():
+    """Signup page"""
+    if 'user_id' in session:
+        return redirect(url_for('index'))
+    
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        email = request.form.get('email', '').strip()
+        password = request.form.get('password', '')
+        confirm_password = request.form.get('confirm_password', '')
+        
+        # Validation
+        if not username or not email or not password:
+            flash('All fields are required', 'error')
+            return render_template('signup.html')
+        
+        if len(username) < 3:
+            flash('Username must be at least 3 characters', 'error')
+            return render_template('signup.html')
+        
+        if len(password) < 6:
+            flash('Password must be at least 6 characters', 'error')
+            return render_template('signup.html')
+        
+        if password != confirm_password:
+            flash('Passwords do not match', 'error')
+            return render_template('signup.html')
+        
+        result = create_user(username, email, password)
+        if result['success']:
+            flash('Account created successfully! Please login.', 'success')
+            return redirect(url_for('login'))
+        else:
+            flash(result['error'], 'error')
+    
+    return render_template('signup.html')
+
+@app.route('/logout')
+def logout():
+    """Logout user"""
+    session.clear()
+    flash('You have been logged out', 'success')
+    return redirect(url_for('login'))
+
+# ========== MAIN ROUTES ==========
+
 @app.route('/')
+@login_required
 def index():
     """Home page with three detection options"""
-    return render_template('index.html')
+    user = get_current_user()
+    return render_template('index.html', user=user)
 
 @app.route('/email')
+@login_required
 def email_page():
     """Email spam detection page"""
-    return render_template('email.html')
+    user = get_current_user()
+    return render_template('email.html', user=user)
 
 @app.route('/sms')
+@login_required
 def sms_page():
     """SMS spam detection page"""
-    return render_template('sms.html')
+    user = get_current_user()
+    return render_template('sms.html', user=user)
 
 @app.route('/url')
+@login_required
 def url_page():
     """URL phishing detection page"""
-    return render_template('url.html')
+    user = get_current_user()
+    return render_template('url.html', user=user)
 
 @app.route('/stats')
+@login_required
 def stats_page():
     """Statistics and model comparison page"""
-    return render_template('stats.html', metrics=model_metrics)
+    user = get_current_user()
+    return render_template('stats.html', metrics=model_metrics, user=user)
+
+@app.route('/history')
+@login_required
+def history_page():
+    """User search history page"""
+    user = get_current_user()
+    history = get_user_history(session['user_id'])
+    stats = get_user_stats(session['user_id'])
+    return render_template('history.html', user=user, history=history, stats=stats)
+
+# ========== API ROUTES ==========
 
 @app.route('/api/predict/email', methods=['POST'])
 def predict_email():
-    """Predict email spam"""
+    """Predict email spam - Combined ML + AI approach for real-world detection"""
     try:
         if email_model is None or email_tokenizer is None:
             return jsonify({
@@ -139,63 +272,50 @@ def predict_email():
         cleaned = clean_text(text)
         seq = texts_to_sequences(email_tokenizer, [cleaned], maxlen=150)
         
-        # Stage 1: Predict with trained model
+        # Stage 1: Predict with ML model first (preliminary check)
         pred_prob = email_model.predict(seq, verbose=0)[0][0]
-        is_spam = bool(pred_prob > 0.5)
+        model_says_spam = bool(pred_prob > 0.5)
+        model_spam_prob = float(pred_prob)
         
-        # Calculate confidence correctly
-        # pred_prob is the probability of being SPAM
-        if is_spam:
-            model_confidence = float(pred_prob)  # Confidence in SPAM prediction
-        else:
-            model_confidence = float(1 - pred_prob)  # Confidence in LEGITIMATE prediction
+        # Stage 2: ALWAYS send to OpenRouter AI for final verification
+        ai_result = verify_with_openrouter(text, content_type="email")
+        ai_says_spam = ai_result['is_spam']
         
-        # Stage 2: Two-stage verification
-        # If model says SPAM -> trust it and show result
-        # If model says LEGITIMATE -> verify with Gemini AI
-        if is_spam:
-            # Model detected SPAM - trust the model
-            return jsonify({
+        # Final decision is based on AI result
+        if ai_says_spam:
+            result = {
                 'success': True,
                 'is_spam': True,
-                'confidence': round(model_confidence * 100, 2),
+                'confidence': ai_result['confidence'],
                 'label': 'Spam',
                 'type': 'email',
-                'verification': 'Model Detection',
-                'stage': 'Stage 1: Deep Learning Model'
-            })
+                'verification': 'OpenRouter AI Verification',
+                'reason': ai_result.get('reason', 'Spam detected by AI'),
+                'stage': 'Final: AI Verified Spam',
+                'model_prediction': 'Spam' if model_says_spam else 'Legitimate',
+                'model_confidence': round(model_spam_prob * 100, 2),
+                'ai_confidence': ai_result['confidence']
+            }
         else:
-            # Model says LEGITIMATE - verify with Gemini AI
-            gemini_result = verify_with_gemini(text, content_type="email")
-            
-            # If Gemini also says legitimate, show legitimate
-            # If Gemini says spam, show spam with Gemini's confidence
-            if gemini_result['is_spam']:
-                # Gemini detected SPAM (model missed it)
-                return jsonify({
-                    'success': True,
-                    'is_spam': True,
-                    'confidence': gemini_result['confidence'],
-                    'label': 'Spam',
-                    'type': 'email',
-                    'verification': 'Gemini AI (Model missed this)',
-                    'reason': gemini_result['reason'],
-                    'stage': 'Stage 2: AI Verification',
-                    'model_confidence': round(model_confidence * 100, 2)
-                })
-            else:
-                # Both model and Gemini say LEGITIMATE
-                return jsonify({
-                    'success': True,
-                    'is_spam': False,
-                    'confidence': gemini_result['confidence'],
-                    'label': 'Legitimate',
-                    'type': 'email',
-                    'verification': 'Verified by Gemini AI',
-                    'reason': gemini_result['reason'],
-                    'stage': 'Stage 2: AI Verification',
-                    'model_confidence': round(model_confidence * 100, 2)
-                })
+            result = {
+                'success': True,
+                'is_spam': False,
+                'confidence': ai_result['confidence'],
+                'label': 'Legitimate',
+                'type': 'email',
+                'verification': 'OpenRouter AI Verification',
+                'reason': ai_result.get('reason', 'Content verified as legitimate'),
+                'stage': 'Final: AI Verified Legitimate',
+                'model_prediction': 'Spam' if model_says_spam else 'Legitimate',
+                'model_confidence': round((1 - model_spam_prob) * 100, 2) if not model_says_spam else round(model_spam_prob * 100, 2),
+                'ai_confidence': ai_result['confidence']
+            }
+        
+        # Save to history if user is logged in
+        if 'user_id' in session:
+            save_search(session['user_id'], 'email', text, result['label'],
+                       result['confidence'], result['verification'], result.get('reason'))
+        return jsonify(result)
         
     except Exception as e:
         return jsonify({
@@ -205,7 +325,7 @@ def predict_email():
 
 @app.route('/api/predict/sms', methods=['POST'])
 def predict_sms():
-    """Predict SMS spam"""
+    """Predict SMS spam - Combined ML + AI approach for real-world detection"""
     try:
         if sms_model is None or sms_tokenizer is None:
             return jsonify({
@@ -226,58 +346,49 @@ def predict_sms():
         cleaned = clean_text(text)
         seq = texts_to_sequences(sms_tokenizer, [cleaned], maxlen=100)
         
-        # Stage 1: Predict with trained model
+        # Stage 1: Predict with ML model first (preliminary check)
         pred_prob = sms_model.predict(seq, verbose=0)[0][0]
-        is_spam = bool(pred_prob > 0.5)
+        model_says_spam = bool(pred_prob > 0.5)
+        model_spam_prob = float(pred_prob)
         
-        # Calculate confidence correctly
-        if is_spam:
-            model_confidence = float(pred_prob)
-        else:
-            model_confidence = float(1 - pred_prob)
+        # Stage 2: ALWAYS send to OpenRouter AI for final verification
+        ai_result = verify_with_openrouter(text, content_type="sms")
+        ai_says_spam = ai_result['is_spam']
         
-        # Stage 2: Two-stage verification
-        if is_spam:
-            # Model detected SPAM - trust it
-            return jsonify({
+        # Final decision is based on AI result
+        if ai_says_spam:
+            result = {
                 'success': True,
                 'is_spam': True,
-                'confidence': round(model_confidence * 100, 2),
+                'confidence': ai_result['confidence'],
                 'label': 'Spam',
                 'type': 'sms',
-                'verification': 'Model Detection',
-                'stage': 'Stage 1: Deep Learning Model'
-            })
+                'verification': 'OpenRouter AI Verification',
+                'reason': ai_result.get('reason', 'Spam detected by AI'),
+                'stage': 'Final: AI Verified Spam',
+                'model_prediction': 'Spam' if model_says_spam else 'Legitimate',
+                'model_confidence': round(model_spam_prob * 100, 2),
+                'ai_confidence': ai_result['confidence']
+            }
         else:
-            # Model says LEGITIMATE - verify with Gemini AI
-            gemini_result = verify_with_gemini(text, content_type="sms")
-            
-            if gemini_result['is_spam']:
-                # Gemini detected SPAM (model missed it)
-                return jsonify({
-                    'success': True,
-                    'is_spam': True,
-                    'confidence': gemini_result['confidence'],
-                    'label': 'Spam',
-                    'type': 'sms',
-                    'verification': 'Gemini AI (Model missed this)',
-                    'reason': gemini_result['reason'],
-                    'stage': 'Stage 2: AI Verification',
-                    'model_confidence': round(model_confidence * 100, 2)
-                })
-            else:
-                # Both model and Gemini say LEGITIMATE
-                return jsonify({
-                    'success': True,
-                    'is_spam': False,
-                    'confidence': gemini_result['confidence'],
-                    'label': 'Legitimate',
-                    'type': 'sms',
-                    'verification': 'Verified by Gemini AI',
-                    'reason': gemini_result['reason'],
-                    'stage': 'Stage 2: AI Verification',
-                    'model_confidence': round(model_confidence * 100, 2)
-                })
+            result = {
+                'success': True,
+                'is_spam': False,
+                'confidence': ai_result['confidence'],
+                'label': 'Legitimate',
+                'type': 'sms',
+                'verification': 'OpenRouter AI Verification',
+                'reason': ai_result.get('reason', 'Content verified as legitimate'),
+                'stage': 'Final: AI Verified Legitimate',
+                'model_prediction': 'Spam' if model_says_spam else 'Legitimate',
+                'model_confidence': round((1 - model_spam_prob) * 100, 2) if not model_says_spam else round(model_spam_prob * 100, 2),
+                'ai_confidence': ai_result['confidence']
+            }
+        
+        if 'user_id' in session:
+            save_search(session['user_id'], 'sms', text, result['label'],
+                       result['confidence'], result['verification'], result.get('reason'))
+        return jsonify(result)
         
     except Exception as e:
         return jsonify({
@@ -308,48 +419,49 @@ def predict_url():
         cleaned = clean_url(url_text)
         seq = texts_to_sequences(url_tokenizer, [cleaned], maxlen=80)
         
-        # Stage 1: Predict with trained model
+        # Stage 1: Predict with ML model first (preliminary check)
         pred_prob = url_model.predict(seq, verbose=0)[0][0]
-        is_phishing = bool(pred_prob > 0.5)
+        model_says_phishing = bool(pred_prob > 0.5)
+        model_phishing_prob = float(pred_prob)
         
-        # Calculate confidence correctly
-        if is_phishing:
-            model_confidence = float(pred_prob)
-        else:
-            model_confidence = float(1 - pred_prob)
+        # Stage 2: ALWAYS send to OpenRouter AI for final verification
+        ai_result = verify_with_openrouter(url_text, content_type="url")
+        ai_says_phishing = ai_result['is_spam']
         
-        # Stage 2: ALWAYS verify with Gemini AI (model is unreliable)
-        # Gemini AI makes the final decision
-        gemini_result = verify_with_gemini(url_text, content_type="url")
-        
-        if gemini_result['is_spam']:
-            # Gemini detected PHISHING
-            return jsonify({
+        # Final decision is based on AI result
+        if ai_says_phishing:
+            result = {
                 'success': True,
                 'is_spam': True,
-                'confidence': gemini_result['confidence'],
+                'confidence': ai_result['confidence'],
                 'label': 'Phishing',
                 'type': 'url',
-                'verification': 'Gemini AI',
-                'reason': gemini_result['reason'],
-                'stage': 'AI Verification',
-                'model_said': 'Phishing' if is_phishing else 'Legitimate',
-                'model_confidence': round(model_confidence * 100, 2)
-            })
+                'verification': 'OpenRouter AI Verification',
+                'reason': ai_result.get('reason', 'Phishing detected by AI'),
+                'stage': 'Final: AI Verified Phishing',
+                'model_prediction': 'Phishing' if model_says_phishing else 'Legitimate',
+                'model_confidence': round(model_phishing_prob * 100, 2),
+                'ai_confidence': ai_result['confidence']
+            }
         else:
-            # Gemini says LEGITIMATE
-            return jsonify({
+            result = {
                 'success': True,
                 'is_spam': False,
-                'confidence': gemini_result['confidence'],
+                'confidence': ai_result['confidence'],
                 'label': 'Legitimate',
                 'type': 'url',
-                'verification': 'Verified by Gemini AI',
-                'reason': gemini_result['reason'],
-                'stage': 'AI Verification',
-                'model_said': 'Phishing' if is_phishing else 'Legitimate',
-                'model_confidence': round(model_confidence * 100, 2)
-            })
+                'verification': 'OpenRouter AI Verification',
+                'reason': ai_result.get('reason', 'URL verified as legitimate'),
+                'stage': 'Final: AI Verified Legitimate',
+                'model_prediction': 'Phishing' if model_says_phishing else 'Legitimate',
+                'model_confidence': round((1 - model_phishing_prob) * 100, 2) if not model_says_phishing else round(model_phishing_prob * 100, 2),
+                'ai_confidence': ai_result['confidence']
+            }
+        
+        if 'user_id' in session:
+            save_search(session['user_id'], 'url', url_text, result['label'],
+                       result['confidence'], result['verification'], result.get('reason'))
+        return jsonify(result)
         
     except Exception as e:
         return jsonify({
@@ -362,7 +474,22 @@ def get_metrics():
     """Return model metrics for stats page"""
     return jsonify(model_metrics)
 
+@app.route('/api/history/<int:history_id>', methods=['DELETE'])
+@login_required
+def delete_history(history_id):
+    """Delete a single history item"""
+    success = delete_history_item(session['user_id'], history_id)
+    return jsonify({'success': success})
+
+@app.route('/api/history/clear', methods=['DELETE'])
+@login_required
+def clear_history():
+    """Clear all history for user"""
+    clear_user_history(session['user_id'])
+    return jsonify({'success': True})
+
 @app.route('/api/upload/extract', methods=['POST'])
+@login_required
 def upload_and_extract():
     """Upload file and extract text"""
     try:
@@ -375,13 +502,15 @@ def upload_and_extract():
         
         if not allowed_file(file.filename):
             return jsonify({
-                'error': 'File type not supported. Allowed: images, PDF, DOCX, TXT',
+                'error': 'File type not supported. Allowed: images, PDF, DOCX, TXT, EML',
                 'success': False
             }), 400
         
-        # Save file
-        filename = secure_filename(file.filename)
-        filepath = os.path.join(UPLOAD_DIR, filename)
+        # Save file with unique name to avoid conflicts
+        import uuid
+        original_filename = secure_filename(file.filename)
+        unique_filename = f"{uuid.uuid4().hex}_{original_filename}"
+        filepath = os.path.join(UPLOAD_DIR, unique_filename)
         file.save(filepath)
         
         # Extract text
@@ -393,16 +522,29 @@ def upload_and_extract():
         except:
             pass
         
-        if not extracted_text or extracted_text.startswith('Error'):
+        # Check if extraction failed or returned error message
+        if not extracted_text:
             return jsonify({
-                'error': extracted_text or 'No text could be extracted',
+                'error': 'No text could be extracted from the file',
+                'success': False
+            }), 400
+        
+        if extracted_text.startswith('Error'):
+            return jsonify({
+                'error': extracted_text,
+                'success': False
+            }), 400
+        
+        if 'No text found' in extracted_text or 'not supported' in extracted_text:
+            return jsonify({
+                'error': extracted_text,
                 'success': False
             }), 400
         
         return jsonify({
             'success': True,
             'text': extracted_text,
-            'filename': filename
+            'filename': original_filename
         })
         
     except Exception as e:

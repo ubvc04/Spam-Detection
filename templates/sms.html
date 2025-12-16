@@ -16,13 +16,27 @@
                 <i class="fas fa-shield-alt me-2"></i>
                 Spam Detection System
             </a>
-            <div class="collapse navbar-collapse">
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav ms-auto">
                     <li class="nav-item">
-                        <a class="nav-link" href="/">Home</a>
+                        <a class="nav-link" href="/"><i class="fas fa-home me-1"></i>Home</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="/stats">Statistics</a>
+                        <a class="nav-link" href="/history"><i class="fas fa-history me-1"></i>History</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/stats"><i class="fas fa-chart-bar me-1"></i>Statistics</a>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
+                            <i class="fas fa-user-circle me-1"></i>{{ user.username }}
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><a class="dropdown-item" href="/logout"><i class="fas fa-sign-out-alt me-2"></i>Logout</a></li>
+                        </ul>
                     </li>
                 </ul>
             </div>
@@ -112,15 +126,29 @@
             
             const filenameDisplay = document.getElementById(targetTextareaId === 'smsText' ? 'smsFileName' : targetTextareaId + 'FileName');
             filenameDisplay.textContent = `Uploading ${file.name}...`;
+
+            // Check file size (max 16MB)
+            if (file.size > 16 * 1024 * 1024) {
+                filenameDisplay.textContent = `✗ Error: File too large (max 16MB)`;
+                event.target.value = '';
+                setTimeout(() => { filenameDisplay.textContent = ''; }, 5000);
+                return;
+            }
             
             const formData = new FormData();
             formData.append('file', file);
+
+            // Create abort controller for timeout
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
             
             try {
                 const response = await fetch('/api/upload/extract', {
                     method: 'POST',
-                    body: formData
+                    body: formData,
+                    signal: controller.signal
                 });
+                clearTimeout(timeoutId);
                 
                 const data = await response.json();
                 
@@ -137,7 +165,12 @@
                     }, 5000);
                 }
             } catch (error) {
-                filenameDisplay.textContent = `✗ Error: ${error.message}`;
+                clearTimeout(timeoutId);
+                if (error.name === 'AbortError') {
+                    filenameDisplay.textContent = `✗ Upload timed out. Try a smaller file.`;
+                } else {
+                    filenameDisplay.textContent = `✗ Error: ${error.message || 'Network error'}`;
+                }
                 setTimeout(() => {
                     filenameDisplay.textContent = '';
                 }, 5000);
@@ -214,16 +247,8 @@
                 resultMessage.textContent = 'This message appears to be legitimate.';
             }
             
-            let confidenceHTML = `
-                <div class="progress mt-3" style="height: 30px;">
-                    <div class="progress-bar ${data.is_spam ? 'bg-danger' : 'bg-success'}" 
-                         style="width: ${data.confidence}%">
-                        ${data.confidence}% Confidence
-                    </div>
-                </div>
-            `;
-            
-            resultConfidence.innerHTML = confidenceHTML;
+            // Hide confidence score
+            resultConfidence.innerHTML = '';
         }
     </script>
 </body>
