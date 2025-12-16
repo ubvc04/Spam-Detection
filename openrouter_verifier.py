@@ -2,8 +2,8 @@
 import os
 import requests
 
-# OpenRouter API Configuration
-OPENROUTER_API_KEY = "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"
+# OpenRouter API Configuration - Load from environment variable
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 def verify_with_openrouter(content, content_type="text"):
